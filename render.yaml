@@ -1,0 +1,18 @@
+# Render.com Blueprint Specification
+# Deploy with: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: clash-strategy-server
+    env: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        sync: false # Set manually in dashboard
+    healthCheckPath: /
