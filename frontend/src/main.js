@@ -15,7 +15,7 @@ import { GameState } from './game/GameState.js';
 // Server URL - change for production
 const SERVER_URL = import.meta.env.DEV
   ? 'http://localhost:3000'
-  : 'https://your-server.railway.app'; // Update with your deployed server URL
+  : 'https://clash-strategy-server.onrender.com';
 
 class Game {
   constructor() {
