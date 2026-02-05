@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clash Strategy</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a2e;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    #game-container {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Lobby UI */
+    #lobby {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      z-index: 100;
+    }
+
+    #lobby.hidden {
+      display: none;
+    }
+
+    .lobby-title {
+      font-size: 3rem;
+      color: #e94560;
+      margin-bottom: 2rem;
+      text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+    }
+
+    .lobby-box {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 2rem;
+      min-width: 400px;
+    }
+
+    .lobby-box h2 {
+      color: #fff;
+      margin-bottom: 1rem;
+      font-size: 1.2rem;
+    }
+
+    .lobby-input {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 1rem;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      margin-bottom: 1rem;
+    }
+
+    .lobby-input:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+
+    .lobby-btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .lobby-btn.primary {
+      background: linear-gradient(135deg, #e94560 0%, #0f3460 100%);
+      color: #fff;
+    }
+
+    .lobby-btn.secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      margin-top: 0.5rem;
+    }
+
+    .lobby-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .lobby-status {
+      margin-top: 1rem;
+      color: #888;
+      text-align: center;
+    }
+
+    /* Game HUD */
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      pointer-events: none;
+      z-index: 50;
+      display: none;
+    }
+
+    #hud.active {
+      display: block;
+    }
+
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 20px;
+    }
+
+    .timer-box {
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 20px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+
+    .tower-hp {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tower-hp-item {
+      background: rgba(0, 0, 0, 0.7);
+      padding: 6px 12px;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+
+    .tower-hp-item.enemy {
+      color: #e94560;
+    }
+
+    .tower-hp-item.friendly {
+      color: #4ade80;
+    }
+
+    /* Elixir Bar */
+    .elixir-container {
+      position: fixed;
+      bottom: 120px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .elixir-bar {
+      width: 300px;
+      height: 24px;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .elixir-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #8b5cf6 0%, #d946ef 100%);
+      transition: width 0.1s linear;
+    }
+
+    .elixir-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-weight: bold;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Card Hand */
+    #card-hand {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .card {
+      width: 80px;
+      height: 100px;
+      background: linear-gradient(180deg, #2d2d44 0%, #1a1a2e 100%);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      user-select: none;
+    }
+
+    .card:hover {
+      transform: translateY(-10px);
+      border-color: #e94560;
+    }
+
+    .card.selected {
+      transform: translateY(-15px);
+      border-color: #4ade80;
+      box-shadow: 0 0 20px rgba(74, 222, 128, 0.4);
+    }
+
+    .card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .card.disabled:hover {
+      transform: none;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-bottom: 5px;
+    }
+
+    .card-name {
+      font-size: 0.65rem;
+      color: #fff;
+      text-align: center;
+    }
+
+    .card-cost {
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #fff;
+      font-size: 0.8rem;
+    }
+
+    /* Next Card */
+    .next-card {
+      position: fixed;
+      bottom: 10px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .next-card-label {
+      color: #888;
+      font-size: 0.7rem;
+      margin-bottom: 5px;
+      text-align: center;
+    }
+
+    .next-card .card {
+      width: 50px;
+      height: 60px;
+      opacity: 0.7;
+      cursor: default;
+    }
+
+    .next-card .card:hover {
+      transform: none;
+    }
+
+    /* Countdown */
+    #countdown {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 8rem;
+      color: #fff;
+      text-shadow: 0 0 50px rgba(233, 69, 96, 0.8);
+      z-index: 60;
+      display: none;
+    }
+
+    /* Game Over */
+    #game-over {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 70;
+    }
+
+    #game-over.active {
+      display: flex;
+    }
+
+    .game-over-text {
+      font-size: 4rem;
+      margin-bottom: 2rem;
+    }
+
+    .game-over-text.win {
+      color: #4ade80;
+    }
+
+    .game-over-text.lose {
+      color: #e94560;
+    }
+
+    .game-over-reason {
+      color: #888;
+      margin-bottom: 2rem;
+    }
+
+    /* Deploy Preview */
+    #deploy-preview {
+      position: fixed;
+      pointer-events: none;
+      display: none;
+      z-index: 40;
+    }
+
+    #deploy-preview.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <!-- Lobby UI -->
+  <div id="lobby">
+    <h1 class="lobby-title">CLASH STRATEGY</h1>
+    <div class="lobby-box">
+      <h2>Join or Create a Match</h2>
+      <input type="text" id="room-input" class="lobby-input" placeholder="Enter Room Code (or leave empty)">
+      <button id="join-btn" class="lobby-btn primary">Play</button>
+      <div id="lobby-status" class="lobby-status"></div>
+    </div>
+  </div>
+
+  <!-- Game HUD -->
+  <div id="hud">
+    <div class="hud-top">
+      <div class="tower-hp enemy" id="enemy-towers"></div>
+      <div class="timer-box" id="timer">3:00</div>
+      <div class="tower-hp friendly" id="friendly-towers"></div>
+    </div>
+
+    <div class="elixir-container">
+      <div class="elixir-bar">
+        <div class="elixir-fill" id="elixir-fill"></div>
+        <div class="elixir-text" id="elixir-text">5</div>
+      </div>
+    </div>
+
+    <div id="card-hand"></div>
+
+    <div class="next-card">
+      <div class="next-card-label">NEXT</div>
+      <div id="next-card-slot"></div>
+    </div>
+  </div>
+
+  <!-- Countdown -->
+  <div id="countdown"></div>
+
+  <!-- Game Over -->
+  <div id="game-over">
+    <div class="game-over-text" id="game-over-text">VICTORY</div>
+    <div class="game-over-reason" id="game-over-reason"></div>
+    <button class="lobby-btn primary" onclick="location.reload()">Play Again</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
