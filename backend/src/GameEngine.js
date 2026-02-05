@@ -499,17 +499,17 @@ export class GameEngine {
    * Check if a position is valid for deployment
    */
   isValidDeployPosition(playerNumber, x, z) {
-    // Must be within arena bounds
-    if (Math.abs(x) > ARENA.WIDTH / 2) return false;
-    if (Math.abs(z) > ARENA.HALF_LENGTH) return false;
+    // Must be within arena bounds (with tolerance)
+    if (Math.abs(x) > ARENA.WIDTH / 2 + 1) return false;
+    if (Math.abs(z) > ARENA.HALF_LENGTH + 1) return false;
 
-    // Must be on own side (with some tolerance at the river)
+    // Must be on own side (with generous tolerance at the river)
     if (playerNumber === 1) {
-      // Player 1 deploys on negative Z side
-      if (z > ARENA.RIVER_Z - ARENA.RIVER_WIDTH / 2 + 0.5) return false;
+      // Player 1 deploys on negative Z side (allow up to river edge)
+      if (z > ARENA.RIVER_Z) return false;
     } else {
-      // Player 2 deploys on positive Z side
-      if (z < ARENA.RIVER_Z + ARENA.RIVER_WIDTH / 2 - 0.5) return false;
+      // Player 2 deploys on positive Z side (allow up to river edge)
+      if (z < ARENA.RIVER_Z) return false;
     }
 
     return true;

@@ -101,16 +101,11 @@ export class GameRenderer {
 
     // Set camera position based on player
     // Player 1 is at bottom (negative Z), Player 2 at top
+    // Both players see their side at the bottom of the screen
     const cameraZ = playerNumber === 1 ? -25 : 25;
-    const cameraLookZ = 0;
 
     this.camera.position.set(0, 20, cameraZ);
-    this.camera.lookAt(0, 0, cameraLookZ);
-
-    // Rotate camera slightly for Player 2
-    if (playerNumber === 2) {
-      this.camera.rotation.z = Math.PI;
-    }
+    this.camera.lookAt(0, 0, 0);
 
     // Create arena ground
     this.createArena();
@@ -504,16 +499,16 @@ export class GameRenderer {
    */
   updateDeployPreview(x, z, playerNumber) {
     // Clamp to valid area
-    const halfWidth = ARENA.WIDTH / 2 - 1;
+    const halfWidth = ARENA.WIDTH / 2;
     x = Math.max(-halfWidth, Math.min(halfWidth, x));
 
     // Clamp Z to player's side
     if (playerNumber === 1) {
-      z = Math.min(z, ARENA.RIVER_Z - ARENA.RIVER_WIDTH / 2 - 0.5);
-      z = Math.max(z, -ARENA.HALF_LENGTH + 2);
+      z = Math.min(z, ARENA.RIVER_Z - 0.5);
+      z = Math.max(z, -ARENA.HALF_LENGTH + 1);
     } else {
-      z = Math.max(z, ARENA.RIVER_Z + ARENA.RIVER_WIDTH / 2 + 0.5);
-      z = Math.min(z, ARENA.HALF_LENGTH - 2);
+      z = Math.max(z, ARENA.RIVER_Z + 0.5);
+      z = Math.min(z, ARENA.HALF_LENGTH - 1);
     }
 
     this.deployPreview.position.set(x, 0.05, z);
@@ -524,12 +519,12 @@ export class GameRenderer {
   }
 
   isValidDeployPosition(x, z, playerNumber) {
-    if (Math.abs(x) > ARENA.WIDTH / 2 - 1) return false;
+    if (Math.abs(x) > ARENA.WIDTH / 2) return false;
 
     if (playerNumber === 1) {
-      return z < ARENA.RIVER_Z - ARENA.RIVER_WIDTH / 2;
+      return z < ARENA.RIVER_Z;
     } else {
-      return z > ARENA.RIVER_Z + ARENA.RIVER_WIDTH / 2;
+      return z > ARENA.RIVER_Z;
     }
   }
 
