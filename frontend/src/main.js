@@ -5,6 +5,7 @@
  * - Three.js renderer
  * - Socket.IO connection
  * - UI controllers
+ * - Drag and drop card deployment
  */
 
 import { GameRenderer } from './core/GameRenderer.js';
@@ -25,16 +26,16 @@ class Game {
     this.state = new GameState();
 
     this.playerNumber = null;
-    this.selectedCard = null;
+    this.draggedCard = null;
+    this.isDragging = false;
 
     this.init();
   }
 
   init() {
-    // Set up event handlers
     this.setupNetworkHandlers();
     this.setupUIHandlers();
-    this.setupInputHandlers();
+    this.setupDragAndDrop();
 
     // Start render loop
     this.animate();
@@ -109,12 +110,10 @@ class Game {
   setupUIHandlers() {
     // Join button
     this.ui.onJoin((roomId) => {
-      // Generate random room ID if empty
       if (!roomId) {
         roomId = Math.random().toString(36).substring(2, 10);
       }
 
-      // Update URL for sharing
       const url = new URL(window.location);
       url.searchParams.set('room', roomId);
       window.history.pushState({}, '', url);
@@ -123,63 +122,89 @@ class Game {
       this.network.joinRoom(roomId);
     });
 
-    // Card selection
-    this.ui.onCardSelect((cardId) => {
-      this.selectedCard = cardId;
-      this.renderer.showDeployPreview(true);
-    });
-
-    // Card deselect
-    this.ui.onCardDeselect(() => {
-      this.selectedCard = null;
-      this.renderer.showDeployPreview(false);
-    });
-  }
-
-  setupInputHandlers() {
-    // Mouse/touch input for deployment
-    const container = document.getElementById('game-container');
-
-    container.addEventListener('click', (e) => {
-      if (!this.selectedCard) return;
-
-      // Get world position from click
-      const worldPos = this.renderer.screenToWorld(e.clientX, e.clientY);
-      if (!worldPos) return;
-
-      // Deploy card
-      this.network.deployCard(this.selectedCard, worldPos.x, worldPos.z);
-
-      // Deselect card
-      this.selectedCard = null;
-      this.ui.deselectCard();
-      this.renderer.showDeployPreview(false);
-    });
-
-    // Mouse move for preview
-    container.addEventListener('mousemove', (e) => {
-      if (!this.selectedCard) return;
-
-      const worldPos = this.renderer.screenToWorld(e.clientX, e.clientY);
-      if (worldPos) {
-        this.renderer.updateDeployPreview(worldPos.x, worldPos.z, this.playerNumber);
-      }
-    });
-
-    // Right-click to cancel
-    container.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      this.selectedCard = null;
-      this.ui.deselectCard();
-      this.renderer.showDeployPreview(false);
-    });
-
     // Check URL for room ID
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
     if (roomId) {
       document.getElementById('room-input').value = roomId;
     }
+  }
+
+  setupDragAndDrop() {
+    const container = document.getElementById('game-container');
+
+    // Card drag start (from UI)
+    this.ui.onCardDragStart((cardId, clientX, clientY) => {
+      this.draggedCard = cardId;
+      this.isDragging = true;
+      this.renderer.startDrag(cardId, clientX, clientY);
+      this.ui.setDragging(true, cardId);
+    });
+
+    // Global mouse/touch move
+    const handleMove = (clientX, clientY) => {
+      if (!this.isDragging || !this.draggedCard) return;
+      this.renderer.updateDrag(clientX, clientY);
+    };
+
+    // Global mouse/touch end
+    const handleEnd = (clientX, clientY) => {
+      if (!this.isDragging || !this.draggedCard) return;
+
+      const result = this.renderer.updateDrag(clientX, clientY);
+      const pos = this.renderer.endDrag();
+
+      if (result && result.isValid) {
+        // Deploy the card
+        this.network.deployCard(this.draggedCard, pos.x, pos.z);
+      }
+
+      this.draggedCard = null;
+      this.isDragging = false;
+      this.ui.setDragging(false, null);
+    };
+
+    // Mouse events
+    document.addEventListener('mousemove', (e) => {
+      handleMove(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      handleEnd(e.clientX, e.clientY);
+    });
+
+    // Touch events
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 0) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length > 0) {
+        handleEnd(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      }
+    });
+
+    // Cancel drag with right-click or escape
+    document.addEventListener('contextmenu', (e) => {
+      if (this.isDragging) {
+        e.preventDefault();
+        this.renderer.cancelDrag();
+        this.draggedCard = null;
+        this.isDragging = false;
+        this.ui.setDragging(false, null);
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isDragging) {
+        this.renderer.cancelDrag();
+        this.draggedCard = null;
+        this.isDragging = false;
+        this.ui.setDragging(false, null);
+      }
+    });
   }
 
   animate() {
