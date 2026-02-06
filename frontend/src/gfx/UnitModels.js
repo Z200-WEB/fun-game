@@ -5,6 +5,7 @@
  * Used by GameRenderer to load and display unit models.
  */
 
+import * as THREE from 'three';
 import { getModelLoader, ModelPresets } from './ModelLoader.js';
 
 // ===================
@@ -262,7 +263,6 @@ export function createAnimationMixer(model, cardId) {
     return null;
   }
 
-  const THREE = window.THREE || require('three');
   const mixer = new THREE.AnimationMixer(model);
 
   return {
