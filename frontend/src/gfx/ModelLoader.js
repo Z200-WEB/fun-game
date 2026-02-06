@@ -45,8 +45,9 @@ export class ModelLoader {
     this.onProgress = options.onProgress || null;
     this.onError = options.onError || null;
 
-    // Base path for models
-    this.basePath = options.basePath || '/assets/models/';
+    // Base path for models - use Vite's base URL for correct deployment path
+    const viteBase = import.meta.env.BASE_URL || '/';
+    this.basePath = options.basePath || `${viteBase}assets/models/`;
   }
 
   /**
