@@ -28,11 +28,27 @@ class Game {
     this.playerNumber = null;
     this.draggedCard = null;
     this.isDragging = false;
+    this.modelsLoaded = false;
 
     this.init();
   }
 
-  init() {
+  async init() {
+    // Show loading message
+    this.ui.showStatus('Loading 3D models...');
+
+    // Preload all GLB models
+    try {
+      await this.renderer.preloadModels((percent, file) => {
+        this.ui.showStatus(`Loading: ${(percent * 100).toFixed(0)}%`);
+      });
+      this.modelsLoaded = true;
+      this.ui.showStatus('Models loaded! Enter room code to play.');
+    } catch (error) {
+      console.warn('Failed to preload some models:', error);
+      this.ui.showStatus('Ready to play (some models may load later)');
+    }
+
     this.setupNetworkHandlers();
     this.setupUIHandlers();
     this.setupDragAndDrop();

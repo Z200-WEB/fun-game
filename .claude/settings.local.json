@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(copy \"c:\\\\Users\\\\dooms\\\\OneDrive - otemae.ac.jp\\\\デスクトップ\\\\game\\\\shared\\\\constants.js\" \"c:\\\\Users\\\\dooms\\\\OneDrive - otemae.ac.jp\\\\デスクトップ\\\\game\\\\backend\\\\shared\\\\constants.js\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nEnhanced graphics and drag-and-drop card deployment\n\n- Completely rewrote GameRenderer with better Three.js graphics\n- Added GSAP animations for smooth unit/tower movements\n- Implemented particle effects system \\(spawn, hit, death effects\\)\n- Added drag-and-drop card deployment with visual preview\n- Enhanced UI with glass morphism card design\n- Improved elixir bar with glowing effects\n- Added dragging visual feedback on cards\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)"
+    ]
+  }
+}

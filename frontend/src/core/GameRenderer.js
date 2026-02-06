@@ -6,11 +6,21 @@
  * - Particle effects
  * - Smooth animations with GSAP
  * - Drag and drop support
+ * - Centralized materials and lighting
  */
 
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { ARENA, CARDS, TOWERS } from '../../../shared/constants.js';
+import { Materials, COLORS, getHealthColor } from '../gfx/Materials.js';
+import { LightingSystem } from '../gfx/Lighting.js';
+import {
+  preloadUnitModels,
+  getUnitModel,
+  getModelConfig,
+  areModelsPreloaded,
+  createAnimationMixer
+} from '../gfx/UnitModels.js';
 
 export class GameRenderer {
   constructor() {
@@ -20,11 +30,18 @@ export class GameRenderer {
     this.renderer = null;
     this.playerNumber = 1;
 
+    // Lighting system
+    this.lighting = null;
+
     // Object pools
     this.unitMeshes = new Map();
     this.towerMeshes = new Map();
     this.effectMeshes = [];
     this.particles = [];
+
+    // Animation mixers for GLB models
+    this.unitAnimationMixers = new Map();
+    this.modelsLoaded = false;
 
     // Drag and drop
     this.dragPreview = null;
@@ -61,12 +78,9 @@ export class GameRenderer {
       150
     );
 
-    // Background
-    this.scene.background = new THREE.Color(0x1a1a2e);
-    this.scene.fog = new THREE.Fog(0x1a1a2e, 35, 70);
-
-    // Enhanced lighting
-    this.setupLighting();
+    // Initialize lighting system
+    this.lighting = new LightingSystem(this.scene);
+    this.lighting.setup('DAY');
 
     // Handle resize
     window.addEventListener('resize', () => this.onResize());
@@ -74,33 +88,19 @@ export class GameRenderer {
     console.log('Renderer initialized');
   }
 
-  setupLighting() {
-    // Ambient light
-    const ambient = new THREE.AmbientLight(0x404060, 0.6);
-    this.scene.add(ambient);
-
-    // Main sun light
-    const sun = new THREE.DirectionalLight(0xfff5e6, 1.0);
-    sun.position.set(15, 30, 10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 60;
-    sun.shadow.camera.left = -25;
-    sun.shadow.camera.right = 25;
-    sun.shadow.camera.top = 25;
-    sun.shadow.camera.bottom = -25;
-    this.scene.add(sun);
-
-    // Blue rim light
-    const rim = new THREE.DirectionalLight(0x4a9eff, 0.4);
-    rim.position.set(-15, 15, -15);
-    this.scene.add(rim);
-
-    // Hemisphere light
-    const hemi = new THREE.HemisphereLight(0x87ceeb, 0x3d5c3d, 0.3);
-    this.scene.add(hemi);
+  /**
+   * Preload all GLB models before game starts
+   * @param {Function} onProgress - Progress callback (percent, filename)
+   * @returns {Promise<void>}
+   */
+  async preloadModels(onProgress = null) {
+    console.log('Preloading 3D models...');
+    await preloadUnitModels((percent, file) => {
+      console.log(`Loading models: ${(percent * 100).toFixed(0)}% - ${file}`);
+      if (onProgress) onProgress(percent, file);
+    });
+    this.modelsLoaded = true;
+    console.log('All models preloaded');
   }
 
   initializeArena(playerNumber) {
@@ -122,11 +122,7 @@ export class GameRenderer {
   createArena() {
     // Ground
     const groundGeo = new THREE.PlaneGeometry(ARENA.WIDTH + 4, ARENA.LENGTH + 4, 20, 40);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x2d5a27,
-      roughness: 0.9
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
+    const ground = new THREE.Mesh(groundGeo, Materials.ground());
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
@@ -143,25 +139,18 @@ export class GameRenderer {
   }
 
   createSideIndicators() {
-    const side1Geo = new THREE.PlaneGeometry(ARENA.WIDTH, ARENA.HALF_LENGTH - 2);
-    const side1Mat = new THREE.MeshStandardMaterial({
-      color: this.playerNumber === 1 ? 0x3d6b3d : 0x5d3d3d,
-      roughness: 0.9,
-      transparent: true,
-      opacity: 0.3
-    });
-    const side1 = new THREE.Mesh(side1Geo, side1Mat);
+    const sideGeo = new THREE.PlaneGeometry(ARENA.WIDTH, ARENA.HALF_LENGTH - 2);
+
+    // Bottom side (Player 1's territory)
+    const side1Mat = this.playerNumber === 1 ? Materials.zoneFriendly() : Materials.zoneEnemy();
+    const side1 = new THREE.Mesh(sideGeo, side1Mat);
     side1.rotation.x = -Math.PI / 2;
     side1.position.set(0, 0.02, -ARENA.HALF_LENGTH / 2 - 1);
     this.scene.add(side1);
 
-    const side2Mat = new THREE.MeshStandardMaterial({
-      color: this.playerNumber === 2 ? 0x3d6b3d : 0x5d3d3d,
-      roughness: 0.9,
-      transparent: true,
-      opacity: 0.3
-    });
-    const side2 = new THREE.Mesh(side1Geo, side2Mat);
+    // Top side (Player 2's territory)
+    const side2Mat = this.playerNumber === 2 ? Materials.zoneFriendly() : Materials.zoneEnemy();
+    const side2 = new THREE.Mesh(sideGeo, side2Mat);
     side2.rotation.x = -Math.PI / 2;
     side2.position.set(0, 0.02, ARENA.HALF_LENGTH / 2 + 1);
     this.scene.add(side2);
@@ -169,27 +158,19 @@ export class GameRenderer {
 
   createRiver() {
     const riverGeo = new THREE.PlaneGeometry(ARENA.WIDTH + 4, ARENA.RIVER_WIDTH + 0.5);
-    const riverMat = new THREE.MeshStandardMaterial({
-      color: 0x3a8fd9,
-      roughness: 0.1,
-      metalness: 0.3,
-      transparent: true,
-      opacity: 0.85
-    });
-    this.river = new THREE.Mesh(riverGeo, riverMat);
+    this.river = new THREE.Mesh(riverGeo, Materials.river());
     this.river.rotation.x = -Math.PI / 2;
     this.river.position.set(0, -0.1, ARENA.RIVER_Z);
     this.scene.add(this.river);
 
     // Banks
-    const bankMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.8 });
     const bankGeo = new THREE.BoxGeometry(ARENA.WIDTH + 4, 0.3, 0.4);
 
-    const bank1 = new THREE.Mesh(bankGeo, bankMat);
+    const bank1 = new THREE.Mesh(bankGeo, Materials.riverBank());
     bank1.position.set(0, 0, ARENA.RIVER_Z - ARENA.RIVER_WIDTH / 2 - 0.2);
     this.scene.add(bank1);
 
-    const bank2 = bank1.clone();
+    const bank2 = new THREE.Mesh(bankGeo, Materials.riverBank());
     bank2.position.z = ARENA.RIVER_Z + ARENA.RIVER_WIDTH / 2 + 0.2;
     this.scene.add(bank2);
   }
@@ -198,18 +179,16 @@ export class GameRenderer {
     const bridgeGroup = new THREE.Group();
 
     const deckGeo = new THREE.BoxGeometry(ARENA.BRIDGE_WIDTH + 0.5, 0.4, ARENA.RIVER_WIDTH + 2);
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.7 });
-    const deck = new THREE.Mesh(deckGeo, deckMat);
+    const deck = new THREE.Mesh(deckGeo, Materials.bridgeDeck());
     deck.position.y = 0.2;
     deck.castShadow = true;
     deck.receiveShadow = true;
     bridgeGroup.add(deck);
 
     // Railings
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x5a4510, roughness: 0.6 });
     for (const side of [-1, 1]) {
       const railGeo = new THREE.BoxGeometry(0.15, 0.5, ARENA.RIVER_WIDTH + 2);
-      const rail = new THREE.Mesh(railGeo, railMat);
+      const rail = new THREE.Mesh(railGeo, Materials.bridgeRail());
       rail.position.set(side * (ARENA.BRIDGE_WIDTH / 2 + 0.1), 0.65, 0);
       bridgeGroup.add(rail);
     }
@@ -247,37 +226,32 @@ export class GameRenderer {
   createTowerMesh(isMain, isEnemy) {
     const group = new THREE.Group();
 
-    const baseColor = isEnemy ? 0xc44536 : 0x36c445;
-    const accentColor = isEnemy ? 0x8b2020 : 0x208b20;
     const radius = isMain ? TOWERS.main.radius : TOWERS.side.radius;
     const height = isMain ? 5 : 3.5;
 
     // Base
     const baseGeo = new THREE.CylinderGeometry(radius * 1.2, radius * 1.4, 0.5, 6);
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a4a5a, roughness: 0.6 });
-    const base = new THREE.Mesh(baseGeo, baseMat);
+    const base = new THREE.Mesh(baseGeo, Materials.towerBase());
     base.position.y = 0.25;
     base.castShadow = true;
     group.add(base);
 
     // Body
     const bodyGeo = new THREE.CylinderGeometry(radius * 0.8, radius, height, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.4, metalness: 0.1 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    const body = new THREE.Mesh(bodyGeo, Materials.towerBody(isEnemy));
     body.position.y = height / 2 + 0.5;
     body.castShadow = true;
     group.add(body);
 
     // Top
     const topGeo = new THREE.CylinderGeometry(radius * 1.0, radius * 0.8, 0.4, 8);
-    const top = new THREE.Mesh(topGeo, baseMat);
+    const top = new THREE.Mesh(topGeo, Materials.towerBase());
     top.position.y = height + 0.7;
     group.add(top);
 
     // Roof
     const roofGeo = new THREE.ConeGeometry(radius * 1.1, 2, 8);
-    const roofMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5 });
-    const roof = new THREE.Mesh(roofGeo, roofMat);
+    const roof = new THREE.Mesh(roofGeo, Materials.towerRoof(isEnemy));
     roof.position.y = height + 1.9;
     roof.castShadow = true;
     group.add(roof);
@@ -290,13 +264,7 @@ export class GameRenderer {
 
     // Glow ring
     const glowGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.5, 32);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: baseColor,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide
-    });
-    const glow = new THREE.Mesh(glowGeo, glowMat);
+    const glow = new THREE.Mesh(glowGeo, Materials.towerGlow(isEnemy));
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.05;
     group.add(glow);
@@ -308,13 +276,11 @@ export class GameRenderer {
     const group = new THREE.Group();
 
     const bgGeo = new THREE.PlaneGeometry(width, 0.4);
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.8 });
-    const bg = new THREE.Mesh(bgGeo, bgMat);
+    const bg = new THREE.Mesh(bgGeo, Materials.healthBarBg());
     group.add(bg);
 
     const fillGeo = new THREE.PlaneGeometry(width - 0.1, 0.3);
-    const fillMat = new THREE.MeshBasicMaterial({ color: 0x4ade80 });
-    const fill = new THREE.Mesh(fillGeo, fillMat);
+    const fill = new THREE.Mesh(fillGeo, Materials.healthBarFill(1));
     fill.position.z = 0.01;
     fill.name = 'fill';
     fill.userData.maxWidth = width - 0.1;
@@ -325,26 +291,14 @@ export class GameRenderer {
 
   createDragPreview() {
     const ringGeo = new THREE.RingGeometry(0.8, 1.2, 32);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x4ade80,
-      transparent: true,
-      opacity: 0.7,
-      side: THREE.DoubleSide
-    });
-    this.dragPreview = new THREE.Mesh(ringGeo, ringMat);
+    this.dragPreview = new THREE.Mesh(ringGeo, Materials.dragPreview(true));
     this.dragPreview.rotation.x = -Math.PI / 2;
     this.dragPreview.position.y = 0.1;
     this.dragPreview.visible = false;
     this.scene.add(this.dragPreview);
 
     const innerGeo = new THREE.CircleGeometry(0.7, 32);
-    const innerMat = new THREE.MeshBasicMaterial({
-      color: 0x4ade80,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide
-    });
-    const inner = new THREE.Mesh(innerGeo, innerMat);
+    const inner = new THREE.Mesh(innerGeo, Materials.dragPreviewInner(true));
     inner.rotation.x = -Math.PI / 2;
     inner.position.y = 0.05;
     inner.name = 'dragInner';
@@ -389,10 +343,11 @@ export class GameRenderer {
     this.dragPreview.position.set(x, 0.1, z);
 
     const isValid = this.isValidDeployPosition(x, z, this.playerNumber);
-    const color = isValid ? 0x4ade80 : 0xe94560;
-    this.dragPreview.material.color.setHex(color);
+
+    // Update materials based on validity
+    this.dragPreview.material = Materials.dragPreview(isValid);
     if (this.dragPreview.children[0]) {
-      this.dragPreview.children[0].material.color.setHex(color);
+      this.dragPreview.children[0].material = Materials.dragPreviewInner(isValid);
     }
 
     return { x, z, isValid };
@@ -458,15 +413,14 @@ export class GameRenderer {
             gsap.to(fill.scale, { x: healthRatio, duration: 0.3 });
             fill.position.x = -(1 - healthRatio) * fill.userData.maxWidth / 2;
 
-            if (healthRatio > 0.5) fill.material.color.setHex(0x4ade80);
-            else if (healthRatio > 0.25) fill.material.color.setHex(0xfbbf24);
-            else fill.material.color.setHex(0xe94560);
+            // Update health bar color using centralized colors
+            fill.material.color.setHex(getHealthColor(healthRatio));
           }
           healthBar.lookAt(this.camera.position);
         }
 
         if (towerData.health <= 0 && mesh.visible) {
-          this.spawnParticles(mesh.position, 0xff6b35, 20);
+          this.spawnParticles(mesh.position, COLORS.FIREBALL, 20);
           gsap.to(mesh.scale, { x: 0, y: 0, z: 0, duration: 0.5, ease: 'back.in(2)' });
         }
         mesh.visible = towerData.health > 0;
@@ -507,12 +461,16 @@ export class GameRenderer {
 
     for (const [id, mesh] of this.unitMeshes) {
       if (!activeIds.has(id)) {
-        this.spawnParticles(mesh.position, 0xff4444, 8);
+        this.spawnParticles(mesh.position, COLORS.PARTICLE_HIT, 8);
         gsap.to(mesh.scale, {
           x: 0, y: 0, z: 0, duration: 0.2,
           onComplete: () => {
             this.scene.remove(mesh);
             this.unitMeshes.delete(id);
+            // Cleanup animation mixer
+            if (this.unitAnimationMixers.has(id)) {
+              this.unitAnimationMixers.delete(id);
+            }
           }
         });
       }
@@ -522,51 +480,86 @@ export class GameRenderer {
   createUnitMesh(unit) {
     const card = CARDS[unit.cardId];
     const group = new THREE.Group();
+    const modelConfig = getModelConfig(unit.cardId);
 
     const isFlying = card.stats?.flying;
-    const yOffset = isFlying ? 2.5 : 0.5;
+    const defaultYOffset = isFlying ? 2.5 : 0;
+    const yOffset = modelConfig?.yOffset ?? defaultYOffset;
     const color = card.color;
 
-    // Body
-    const bodyGeo = new THREE.CapsuleGeometry(0.35, 0.5, 4, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.1 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = yOffset;
-    body.castShadow = true;
-    group.add(body);
+    // Try to use GLB model if available
+    const glbModel = this.modelsLoaded ? getUnitModel(unit.cardId) : null;
 
-    // Head
-    const headGeo = new THREE.SphereGeometry(0.25, 8, 8);
-    const head = new THREE.Mesh(headGeo, bodyMat);
-    head.position.y = yOffset + 0.55;
-    group.add(head);
+    if (glbModel) {
+      // Use GLB model
+      glbModel.position.y = yOffset;
 
-    // Team ring
-    const ringColor = unit.owner === this.playerNumber ? 0x4ade80 : 0xe94560;
-    const ringGeo = new THREE.RingGeometry(0.35, 0.45, 16);
-    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+      // Apply rotation offset from config
+      if (modelConfig?.rotationOffset) {
+        glbModel.rotation.y = modelConfig.rotationOffset;
+      }
+
+      // Enable shadows on all meshes in the model
+      glbModel.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      group.add(glbModel);
+
+      // Setup animation mixer if model has animations
+      const animMixer = createAnimationMixer(glbModel, unit.cardId);
+      if (animMixer) {
+        this.unitAnimationMixers.set(unit.id, animMixer);
+        // Auto-play first animation (usually idle/walk)
+        animMixer.play('idle') || animMixer.play('walk') || animMixer.play(null);
+      }
+
+      group.userData.hasGLBModel = true;
+    } else {
+      // Fallback to primitive geometry
+      const bodyGeo = new THREE.CapsuleGeometry(0.35, 0.5, 4, 8);
+      const body = new THREE.Mesh(bodyGeo, Materials.unitBody(color));
+      body.position.y = yOffset + 0.5;
+      body.castShadow = true;
+      group.add(body);
+
+      const headGeo = new THREE.SphereGeometry(0.25, 8, 8);
+      const head = new THREE.Mesh(headGeo, Materials.unitBody(color));
+      head.position.y = yOffset + 1.05;
+      group.add(head);
+
+      group.userData.hasGLBModel = false;
+    }
+
+    // Team ring (always add)
+    const isFriendly = unit.owner === this.playerNumber;
+    const ringGeo = new THREE.RingGeometry(0.5, 0.65, 16);
+    const ring = new THREE.Mesh(ringGeo, Materials.unitTeamRing(isFriendly));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
 
-    // Shadow
-    const shadowGeo = new THREE.CircleGeometry(0.4, 16);
-    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
-    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    // Shadow (always add)
+    const shadowGeo = new THREE.CircleGeometry(0.5, 16);
+    const shadow = new THREE.Mesh(shadowGeo, Materials.unitShadow());
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.01;
     group.add(shadow);
 
     // Health bar
-    const healthBar = this.createHealthBar(0.8);
-    healthBar.position.y = yOffset + 1;
+    const healthBarY = glbModel ? (yOffset + 2.5) : (yOffset + 1.5);
+    const healthBar = this.createHealthBar(1.0);
+    healthBar.position.y = healthBarY;
     healthBar.scale.set(0.8, 0.8, 0.8);
     healthBar.name = 'healthBar';
     group.add(healthBar);
 
-    group.userData.yOffset = yOffset;
+    group.userData.yOffset = 0;  // Group stays at ground level
     group.userData.cardId = unit.cardId;
+    group.userData.unitId = unit.id;
 
     return group;
   }
@@ -585,8 +578,7 @@ export class GameRenderer {
   spawnParticles(position, color, count) {
     for (let i = 0; i < count; i++) {
       const geo = new THREE.SphereGeometry(0.1, 4, 4);
-      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-      const particle = new THREE.Mesh(geo, mat);
+      const particle = new THREE.Mesh(geo, Materials.particle(color));
       particle.position.copy(position);
       this.scene.add(particle);
 
@@ -616,12 +608,12 @@ export class GameRenderer {
   createFireballEffect(effect) {
     const group = new THREE.Group();
     const geo = new THREE.SphereGeometry(effect.radius, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xff6b35, transparent: true, opacity: 0.6 });
+    const mat = Materials.fireball();
     const sphere = new THREE.Mesh(geo, mat);
     group.add(sphere);
 
     const ringGeo = new THREE.RingGeometry(effect.radius - 0.2, effect.radius + 0.2, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    const ringMat = Materials.fireballRing();
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     group.add(ring);
@@ -634,12 +626,31 @@ export class GameRenderer {
     return group;
   }
 
+  /**
+   * Switch lighting preset (for game phase changes)
+   */
+  setLightingPreset(preset) {
+    if (this.lighting) {
+      this.lighting.transitionTo(preset);
+    }
+  }
+
   update(state) {
     const delta = this.clock.getDelta();
+
+    // Update river animation
     if (this.river) {
       const time = this.clock.getElapsedTime();
       this.river.position.y = -0.1 + Math.sin(time * 2) * 0.02;
     }
+
+    // Update all unit animation mixers
+    for (const [id, animMixer] of this.unitAnimationMixers) {
+      if (animMixer && animMixer.update) {
+        animMixer.update(delta);
+      }
+    }
+
     this.renderer.render(this.scene, this.camera);
   }
 
